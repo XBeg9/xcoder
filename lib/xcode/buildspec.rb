@@ -1,5 +1,6 @@
 require 'rake'
 require 'rake/tasklib'
+require 'versionomy'
 
 module Xcode
 
@@ -70,11 +71,6 @@ module Xcode
       def initialize
         @before = lambda {|builder| return nil }
         @deployments = []
-        @build_number = lambda do
-          timestamp = Time.now.strftime("%Y%m%d%H%M%S")
-          ENV['BUILD_NUMBER']||"SNAPSHOT-#{Socket.gethostname}-#{timestamp}"
-        end
-
         # @profile = "Provisioning/#{name}.mobileprovision"
       end
 
@@ -104,15 +100,21 @@ module Xcode
       end
 
       # 
-      # A block to generate the build number
+      # Generate the build number
       #
-      # This is optional, by default it will use ENV['BUILD_NUMBER'] or create a snapshot
-      # filename based on the hostname and time
+      # @param a hash containing {:version => false, marketing_version => false}
       #
-      # @param the block to generate the build number
-      #
-      def build_number &block
-        @build_number = block
+      def build_number args={}
+        @build_number = lambda do
+          builder.config.info_plist do |info|
+          info.version = info.version.to_i + 1 if args[:version]
+          if args[:marketing_version]
+            marketing_version = Versionomy.parse(info.marketing_version)
+            info.marketing_version = marketing_version.bump(:tiny).to_s
+          end
+          info.save
+          end
+        end
       end
 
       #
@@ -197,13 +199,13 @@ module Xcode
           @builder = workspace.scheme(@args[:scheme]).builder
         rescue
           raise "You must provide a project or workspace"          
-        end          
+        end
 
         raise "Could not create a builder using #{@args}" if @builder.nil?
         
         unless @platform.nil?
           builder.sdk = @platform.sdk
-        end 
+        end
 
         unless @identity.nil?
           builder.identity = @identity
@@ -216,7 +218,7 @@ module Xcode
           builder.identity = keychain.identities.first
           builder.keychain = keychain
         end
-        
+
         builder.profile = @profile
 
         @before.call builder
@@ -236,49 +238,46 @@ module Xcode
 
         # namespace project_name.downcase do
 
-          desc "Clean #{project_name}"
-          task :clean do
-            builder.clean
-          end
+        desc "Clean #{project_name}"
+        task :clean do
+          builder.clean
+        end
 
-          desc "Fetch dependencies for #{project_name}"
-          task :deps do 
-            builder.dependencies
-          end
+        desc "Fetch dependencies for #{project_name}"
+        task :deps do
+          builder.dependencies
+        end
 
-          desc "Build #{project_name}"
-          task :build => [:clean, :deps] do
-            builder.config.info_plist do |info|
-              info.version = @build_number.call
-              info.save
+        desc "Build #{project_name}"
+        task :build => [:clean, :deps] do
+          @build_number.call
+          builder.build
+        end
+
+        desc "Test #{project_name}"
+        task :test => [:deps] do
+          builder.test
+        end
+
+        desc "Package (.ipa & .dSYM.zip) #{project_name}"
+        task :package => [:build, :test] do
+          builder.package
+        end
+
+        namespace :deploy do
+          @deployments.each do |deployment|
+            desc "Deploy #{project_name} to #{deployment[:type]}"
+            task deployment[:type]  => [:package] do
+              builder.deploy deployment[:type], deployment[:args]
             end
-            builder.build
           end
 
-          desc "Test #{project_name}" 
-          task :test => [:deps] do 
-            builder.test
-          end
-
-          desc "Package (.ipa & .dSYM.zip) #{project_name}"
-          task :package => [:build, :test] do
-            builder.package
-          end
-
-          namespace :deploy do
-            @deployments.each do |deployment|
-              desc "Deploy #{project_name} to #{deployment[:type]}"
-              task deployment[:type]  => [:package] do
-                builder.deploy deployment[:type], deployment[:args]
-              end
-            end
-
-            desc "Deploy #{project_name} to all"
-            task :all  => [:package]+(@deployments.map{|k,v| k[:type]}) do
-              puts "Deployed to all"
-            end
+          desc "Deploy #{project_name} to all"
+          task :all  => [:package]+(@deployments.map{|k,v| k[:type]}) do
+            puts "Deployed to all"
           end
         end
+      end
       # end
     end
 

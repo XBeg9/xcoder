@@ -1,11 +1,12 @@
 #!/usr/bin/env ruby
-require 'xcoder'
-require 'optparse'
 
+$:.push File.expand_path("../../lib", __FILE__)
+require 'xcoder'
+
+require 'optparse'
 require 'xcode/buildspec'
 
-options = {}
-OptionParser.new do |opts|
+options = {}OptionParser.new do |opts|
   opts.banner = "Usage: xcoder [options]"
 
 

@@ -79,6 +79,8 @@ module Xcode
 
           cmd << "-sdk #{sdk}" unless sdk.nil?
 
+          cmd.env["CONFIGURATION_BUILD_DIR"]   = configuration_build_path
+
           yield cmd if block_given?
         end
       end      

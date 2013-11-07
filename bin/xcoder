@@ -6,7 +6,8 @@ require 'xcoder'
 require 'optparse'
 require 'xcode/buildspec'
 
-options = {}OptionParser.new do |opts|
+options = {}
+OptionParser.new do |opts|
   opts.banner = "Usage: xcoder [options]"
 
 
